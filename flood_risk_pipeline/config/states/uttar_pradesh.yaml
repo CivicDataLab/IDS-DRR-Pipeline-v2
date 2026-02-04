@@ -1,0 +1,37 @@
+# config/states/uttar_pradesh.yaml
+# State-specific configuration for Uttar Pradesh
+
+state_id: uttar_pradesh
+state_code: UP
+
+admin_boundaries:
+  source: bharatmaps
+  level: revenue_circle
+
+data_sources:
+  satellite:
+    gcn250: true
+    bhuvan: true
+    bhuvan_config:
+      # Bounding box: [min_lon, min_lat, max_lon, max_lat]
+      bbox: [77.0882, 23.8693, 84.6356, 30.4086]
+      wms_code: "up"
+      layer_prefix: "flood"
+      admin_boundary_shapefile: "data/shapefiles/up_revenue_circles.shp"
+
+  procurement:
+    portal_url: https://etender.up.nic.in
+    scraper_class: UPTenderScraper
+
+  demographics:
+    census_year: 2011
+    worldpop: true
+
+update_frequencies:
+  weather: daily
+  procurement: monthly
+  demographics: static
+
+output:
+  risk_score_table: up_flood_risk_scores
+  partition_key: revenue_circle_id

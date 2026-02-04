@@ -1,0 +1,88 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flood-risk-pipeline"
+version = "0.1.0"
+description = "Multi-state flood risk data pipeline using Dagster"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "CivicDataLab"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "dagster>=1.6.0",
+    "dagster-webserver>=1.6.0",
+    "dagster-postgres>=0.22.0",
+    "pyyaml>=6.0",
+    "requests>=2.31.0",
+    "pandas>=2.0.0",
+    "geopandas>=0.14.0",
+    "earthengine-api>=0.1.380",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "boto3>=1.34.0",
+    "google-cloud-storage>=2.14.0",
+    "imdlib>=0.1.21",
+    "Pillow>=10.0.0",
+    "rasterio>=1.3.0",
+    "rasterstats>=0.19.0",
+    "bs4>=0.0.2",
+    "natsort>=8.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/CivicDataLab/flood-risk-pipeline"
+Repository = "https://github.com/CivicDataLab/flood-risk-pipeline"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["flood_risk_pipeline*"]
+
+[tool.dagster]
+module_name = "flood_risk_pipeline.definitions"
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

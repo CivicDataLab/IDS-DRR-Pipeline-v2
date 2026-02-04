@@ -1,0 +1,7 @@
+# Dagster workspace configuration
+# This file tells Dagster where to find code locations
+
+load_from:
+  - python_module:
+      module_name: flood_risk_pipeline.definitions
+      working_directory: .

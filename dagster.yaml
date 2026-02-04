@@ -1,0 +1,35 @@
+# Dagster instance configuration
+
+# Storage configuration (commented out for local dev - uses temporary SQLite)
+# storage:
+#   postgres:
+#     postgres_url:
+#       env: DAGSTER_POSTGRES_URL
+
+# Run coordinator - uses the default run coordinator
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: DefaultRunCoordinator
+
+# Run launcher - launches runs in the same process for development
+run_launcher:
+  module: dagster.core.launcher
+  class: DefaultRunLauncher
+
+# Compute log manager
+compute_logs:
+  module: dagster.core.storage.local_compute_log_manager
+  class: LocalComputeLogManager
+  config:
+    base_dir: ./logs
+
+# Local artifact storage
+local_artifact_storage:
+  module: dagster.core.storage.root
+  class: LocalArtifactStorage
+  config:
+    base_dir: ./artifacts
+
+# Telemetry - disabled
+telemetry:
+  enabled: false

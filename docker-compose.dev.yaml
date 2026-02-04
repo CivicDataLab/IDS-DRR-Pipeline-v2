@@ -1,0 +1,76 @@
+version: "3.8"
+
+services:
+  # PostgreSQL database for Dagster
+  postgres:
+    image: postgres:15
+    container_name: dagster_postgres
+    environment:
+      POSTGRES_USER: dagster
+      POSTGRES_PASSWORD: dagster_password
+      POSTGRES_DB: dagster
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dagster"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Dagster webserver (Dagit UI)
+  dagster_webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dagster_webserver
+    entrypoint:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      - -w
+      - workspace.yaml
+    ports:
+      - "3000:3000"
+    environment:
+      DAGSTER_POSTGRES_HOST: postgres
+      DAGSTER_POSTGRES_PORT: 5432
+      DAGSTER_POSTGRES_USER: dagster
+      DAGSTER_POSTGRES_PASSWORD: dagster_password
+      DAGSTER_POSTGRES_DB: dagster
+    volumes:
+      - ./flood_risk_pipeline:/app/flood_risk_pipeline
+      - ./data:/app/data
+      - ./staging:/app/staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Dagster daemon (schedules and sensors)
+  dagster_daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dagster_daemon
+    entrypoint:
+      - dagster-daemon
+      - run
+    environment:
+      DAGSTER_POSTGRES_HOST: postgres
+      DAGSTER_POSTGRES_PORT: 5432
+      DAGSTER_POSTGRES_USER: dagster
+      DAGSTER_POSTGRES_PASSWORD: dagster_password
+      DAGSTER_POSTGRES_DB: dagster
+    volumes:
+      - ./flood_risk_pipeline:/app/flood_risk_pipeline
+      - ./data:/app/data
+      - ./staging:/app/staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

@@ -1,0 +1,41 @@
+# Shared data source definitions for all states
+# Each state config can override or extend these settings
+
+satellite:
+  gcn250:
+    description: "Google Earth Engine rainfall-runoff data"
+    type: gee
+    collection: "projects/sat-io/open-datasets/GCN250"
+    enabled: true
+
+  bhuvan:
+    description: "ISRO flood maps via WMS API"
+    type: wms
+    base_url: "https://bhuvan-vec2.nrsc.gov.in/bhuvan/wms"
+    enabled: true
+
+weather:
+  imd:
+    description: "India Meteorological Department weather data"
+    type: api
+    base_url: "https://mausam.imd.gov.in"
+    enabled: true
+
+demographics:
+  census:
+    description: "Census of India population data"
+    type: static
+    year: 2011
+
+  worldpop:
+    description: "WorldPop population density"
+    type: download
+    base_url: "https://www.worldpop.org"
+    enabled: true
+
+# Default update frequencies
+update_frequencies:
+  satellite: daily
+  weather: daily
+  procurement: monthly
+  demographics: static

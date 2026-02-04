@@ -1,0 +1,37 @@
+# config/states/bihar.yaml
+# State-specific configuration for Bihar
+
+state_id: bihar
+state_code: BR
+
+admin_boundaries:
+  source: bharatmaps
+  level: revenue_circle
+
+data_sources:
+  satellite:
+    gcn250: true
+    bhuvan: true
+    bhuvan_config:
+      # Bounding box: [min_lon, min_lat, max_lon, max_lat]
+      bbox: [83.3209, 24.2842, 88.1748, 27.5215]
+      wms_code: "br"
+      layer_prefix: "flood"
+      admin_boundary_shapefile: "data/shapefiles/bihar_revenue_circles.shp"
+
+  procurement:
+    portal_url: https://eproc2.bihar.gov.in
+    scraper_class: BiharTenderScraper
+
+  demographics:
+    census_year: 2011
+    worldpop: true
+
+update_frequencies:
+  weather: daily
+  procurement: monthly
+  demographics: static
+
+output:
+  risk_score_table: bihar_flood_risk_scores
+  partition_key: revenue_circle_id

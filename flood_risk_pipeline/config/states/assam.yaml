@@ -1,0 +1,43 @@
+# config/states/assam.yaml
+# State-specific configuration for Assam
+
+state_id: assam
+state_code: AS
+
+admin_boundaries:
+  source: bharatmaps
+  level: revenue_circle
+
+data_sources:
+  satellite:
+    gcn250: true
+    bhuvan: true
+    bhuvan_config:
+      # Bounding box: [min_lon, min_lat, max_lon, max_lat]
+      bbox: [89.6923, 23.9905, 96.0206, 28.1690]
+      wms_code: "as"
+      layer_prefix: "flood"
+      admin_boundary_shapefile: "data/shapefiles/assam_revenue_circle_nov2022.shp"
+
+  procurement:
+    portal_url: https://assamtenders.gov.in
+    scraper_class: AssamTenderScraper
+
+  # Assam has additional ASDMA portal
+  custom:
+    asdma_portal:
+      enabled: true
+      url: https://asdma.assam.gov.in
+
+  demographics:
+    census_year: 2011
+    worldpop: true
+
+update_frequencies:
+  weather: daily
+  procurement: monthly
+  demographics: static
+
+output:
+  risk_score_table: assam_flood_risk_scores
+  partition_key: revenue_circle_id
