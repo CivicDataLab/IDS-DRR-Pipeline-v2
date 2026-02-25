@@ -11,14 +11,11 @@ Computes flood hazard indicators from satellite and weather data:
 import dagster as dg
 
 from flood_risk_pipeline.partitions import monthly_state_partitions
-from flood_risk_pipeline.assets.extraction.satellite import raw_satellite_data
-from flood_risk_pipeline.assets.extraction.weather import raw_weather_data
 
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    deps=[raw_satellite_data, raw_weather_data],
-    group_name="transformation",
+    deps=["raw_satellite_data", "raw_weather_data"],
     automation_condition=dg.AutomationCondition.on_cron("0 2 1 * *"),
     description="Computed hazard factor combining satellite and weather data",
 )

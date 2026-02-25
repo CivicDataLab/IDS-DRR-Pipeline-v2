@@ -9,10 +9,23 @@ import json
 import logging
 
 import dagster as dg
+import importlib
 
-from flood_risk_pipeline.assets.extraction import satellite, weather, procurement
-from flood_risk_pipeline.assets.transformation import hazard_factor, vulnerability_factor, risk_score
-from flood_risk_pipeline.assets.outputs import risk_model
+# from flood_risk_pipeline.assets.extraction import satellite, weather, procurement
+# from flood_risk_pipeline.assets.transformation import hazard_factor, vulnerability_factor, risk_score
+# from flood_risk_pipeline.assets.outputs import risk_model
+# from flood_risk_pipeline.assets import extraction, transformation, outputs
+
+satellite = importlib.import_module('flood_risk_pipeline.assets.extraction.satellite')
+weather = importlib.import_module('flood_risk_pipeline.assets.extraction.weather')
+procurement = importlib.import_module('flood_risk_pipeline.assets.extraction.procurement')
+
+hazard_factor = importlib.import_module('flood_risk_pipeline.assets.transformation.hazard_factor')
+vulnerability_factor = importlib.import_module('flood_risk_pipeline.assets.transformation.vulnerability_factor')
+risk_score = importlib.import_module('flood_risk_pipeline.assets.transformation.risk_score')
+
+risk_model = importlib.import_module('flood_risk_pipeline.assets.outputs.risk_model')
+
 from flood_risk_pipeline.sources.apis import api_resources
 from flood_risk_pipeline.sources.storage import storage_resources
 from flood_risk_pipeline.partitions import (
@@ -24,9 +37,7 @@ from flood_risk_pipeline.partitions import (
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Collect all assets
-# ---------------------------------------------------------------------------
 
 extraction_assets = dg.load_assets_from_modules(
     [satellite, weather, procurement],
@@ -43,31 +54,44 @@ output_assets = dg.load_assets_from_modules(
     group_name="outputs",
 )
 
+
+
 all_assets = [*extraction_assets, *transformation_assets, *output_assets]
 
 
-# ---------------------------------------------------------------------------
-# Schedules
-# ---------------------------------------------------------------------------
 
+# Schedules
 daily_collection_schedule = dg.ScheduleDefinition(
     name="daily_collection",
     cron_schedule="0 2 * * *",  # Run at 2 AM daily
-    target=dg.AssetSelection.groups("extraction").required_multi_asset_neighbors(),
+    target=dg.AssetSelection.keys(
+        "gcn250_rainfall_data",
+        "imd_weather_data",
+        "river_gauge_data",
+    ),
     description="Daily collection of weather and satellite data",
+)
+
+monthly_extraction_schedule = dg.ScheduleDefinition(
+    name="monthly_extraction",
+    cron_schedule="0 2 1 * *",  # Run at 2 AM on 1st of each month
+    target=dg.AssetSelection.keys(
+        "bhuvan_flood_maps",
+        "raw_satellite_data",
+        "raw_weather_data",
+        "raw_procurement_data",
+        "raw_budget_data",
+    ),
+    description="Monthly extraction of satellite, weather, and procurement data",
 )
 
 monthly_aggregation_schedule = dg.ScheduleDefinition(
     name="monthly_aggregation",
     cron_schedule="0 2 1 * *",  # Run at 2 AM on 1st of each month
-    target=dg.AssetSelection.groups("transformation", "outputs"),
+    target=dg.AssetSelection.groups("transformation") | dg.AssetSelection.keys("risk_score_output"),
     description="Monthly aggregation and risk model execution",
 )
 
-
-# ---------------------------------------------------------------------------
-# Sensors
-# ---------------------------------------------------------------------------
 
 # States to monitor for new flood dates on the Bhuvan portal.
 _BHUVAN_STATES: dict[str, str] = {
@@ -82,9 +106,10 @@ _BHUVAN_STATES: dict[str, str] = {
 @dg.sensor(
     name="bhuvan_new_dates_sensor",
     target=dg.AssetSelection.keys("bhuvan_flood_maps"),
-    minimum_interval_seconds=3600 * 6,  # Check every 6 hours
+    minimum_interval_seconds=864000,  # Check every 10 days (10 * 24 * 3600)
     description="Polls Bhuvan portal for new flood observation dates",
 )
+
 def bhuvan_new_dates_sensor(context: dg.SensorEvaluationContext):
     """Detect new flood dates and trigger materialisation of bhuvan_flood_maps.
 
@@ -133,28 +158,42 @@ def bhuvan_new_dates_sensor(context: dg.SensorEvaluationContext):
     return run_requests
 
 
-# ---------------------------------------------------------------------------
-# Resources
-# ---------------------------------------------------------------------------
+# Jobs
+assam_extraction_job = dg.define_asset_job(
+    name="assam_extraction_job",
+    selection=dg.AssetSelection.keys(
+        "bhuvan_flood_maps",
+        "raw_satellite_data",
+        "raw_weather_data",
+        "raw_procurement_data",
+        "raw_budget_data",
+    ),
+    partitions_def=monthly_state_partitions,
+    description="Extract flood risk data for Assam state",
+)
 
+
+# Resources
 all_resources = {
     **api_resources,
     **storage_resources,
 }
 
 
-# ---------------------------------------------------------------------------
 # Definitions
-# ---------------------------------------------------------------------------
 
 defs = dg.Definitions(
     assets=all_assets,
     resources=all_resources,
     schedules=[
         daily_collection_schedule,
+        monthly_extraction_schedule,
         monthly_aggregation_schedule,
     ],
     sensors=[
         bhuvan_new_dates_sensor,
+    ],
+    jobs=[
+        assam_extraction_job,
     ],
 )

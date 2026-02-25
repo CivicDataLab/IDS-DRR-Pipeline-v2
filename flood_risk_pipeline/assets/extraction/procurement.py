@@ -27,7 +27,6 @@ def load_state_config(state: str) -> dict:
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    group_name="extraction",
     description="Government procurement/tender data scraped from state portals",
 )
 def raw_procurement_data(context: dg.AssetExecutionContext) -> dict:
@@ -58,7 +57,6 @@ def raw_procurement_data(context: dg.AssetExecutionContext) -> dict:
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    group_name="extraction",
     description="Budget allocation data for disaster response",
 )
 def raw_budget_data(context: dg.AssetExecutionContext) -> dict:

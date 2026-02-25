@@ -13,7 +13,6 @@ from flood_risk_pipeline.partitions import daily_partitions, monthly_state_parti
 
 @dg.asset(
     partitions_def=daily_partitions,
-    group_name="extraction",
     description="Daily weather data from India Meteorological Department",
 )
 def imd_weather_data(context: dg.AssetExecutionContext) -> dict:
@@ -32,7 +31,6 @@ def imd_weather_data(context: dg.AssetExecutionContext) -> dict:
 
 @dg.asset(
     partitions_def=daily_partitions,
-    group_name="extraction",
     description="River gauge readings for flood monitoring",
 )
 def river_gauge_data(context: dg.AssetExecutionContext) -> dict:
@@ -51,8 +49,7 @@ def river_gauge_data(context: dg.AssetExecutionContext) -> dict:
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    group_name="extraction",
-    deps=[imd_weather_data, river_gauge_data],
+    deps=["imd_weather_data", "river_gauge_data"],
     description="Aggregated weather data per state-month",
 )
 def raw_weather_data(context: dg.AssetExecutionContext) -> dict:

@@ -23,18 +23,18 @@ state_partitions = dg.StaticPartitionsDefinition([
 
 
 # Daily partitions for weather/satellite data
-daily_partitions = dg.DailyPartitionsDefinition(start_date="2024-01-01")
+daily_partitions = dg.DailyPartitionsDefinition(start_date="2026-02-08")
 
 
 # Monthly partitions for aggregation
-monthly_partitions = dg.MonthlyPartitionsDefinition(start_date="2024-01-01")
+monthly_partitions = dg.MonthlyPartitionsDefinition(start_date="2026-02-08")
 
 
 # Two-dimensional partitions: state x month
 # This is the primary partition scheme for most assets
 monthly_state_partitions = dg.MultiPartitionsDefinition({
     "state": state_partitions,
-    "month": dg.MonthlyPartitionsDefinition(start_date="2024-01-01"),
+    "month": dg.MonthlyPartitionsDefinition(start_date="2026-02-08"),
 })
 
 

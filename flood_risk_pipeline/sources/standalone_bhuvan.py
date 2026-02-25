@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import rasterstats
 import geopandas as gpd
 import pandas as pd
@@ -497,7 +496,7 @@ def process_date(date_string, state_name, state_cfg, base_path, paths):
     # Generate all bounding boxes
     print("Generating tile grid...")
     bboxes = generate_bboxes(lat_south, lat_north, lon_west, lon_east, delta)
-    
+ 
     # Calculate grid dimensions
     num_horizontal = int((lon_east - lon_west) / delta) + 1
     num_vertical = int((lat_north - lat_south) / delta) + 1
@@ -922,6 +921,7 @@ Examples:
         """
     )
     
+
     parser.add_argument('--state', '-s', type=str, help='State name to process')
     parser.add_argument('--dates', '-d', type=str, help='Comma-separated list of dates (YYYY_DD_MM_HH)')
     parser.add_argument('--output', '-o', type=str, help='Output directory')
@@ -929,9 +929,10 @@ Examples:
     parser.add_argument('--list-states', '-l', action='store_true', help='List available states')
     parser.add_argument('--init-config', action='store_true', help='Initialize config file with defaults')
     parser.add_argument('--show-dates', action='store_true', help='Show cached dates for a state')
-    parser.add_argument('--shapefile', type=str, help='Path to shapefile for zonal stats CSV output')
+    parser.add_argument('--shapefile', type=str, help='Path to shapefile for zonal stats CSV  output')
     
     args = parser.parse_args()
+    
     
     # Initialize config
     if args.init_config:
@@ -948,6 +949,7 @@ Examples:
         print("-" * 40)
         for name, cfg in config.get("states", {}).items():
             bbox = cfg.get("bbox", {})
+
             print(f"  {name}")
             print(f"    Code: {cfg.get('code', 'N/A')}")
             print(f"    Bbox: {bbox.get('lon_west', 'N/A')}, {bbox.get('lat_south', 'N/A')} to "

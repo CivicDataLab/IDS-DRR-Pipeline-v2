@@ -11,18 +11,11 @@ Combines all risk factors into a final risk score:
 import dagster as dg
 
 from flood_risk_pipeline.partitions import monthly_state_partitions
-from flood_risk_pipeline.assets.transformation.hazard_factor import hazard_factor
-from flood_risk_pipeline.assets.transformation.vulnerability_factor import (
-    vulnerability_factor,
-    exposure_factor,
-)
-from flood_risk_pipeline.assets.extraction.procurement import raw_procurement_data
 
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    deps=[raw_procurement_data],
-    group_name="transformation",
+    deps=["raw_procurement_data"],
     description="Government response factor from procurement and budget data",
 )
 def government_response_factor(context: dg.AssetExecutionContext) -> dict:
@@ -55,8 +48,7 @@ def government_response_factor(context: dg.AssetExecutionContext) -> dict:
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    deps=[hazard_factor, vulnerability_factor, exposure_factor, government_response_factor],
-    group_name="transformation",
+    deps=["hazard_factor", "vulnerability_factor", "exposure_factor", "government_response_factor"],
     description="Final composite risk score combining all factors",
 )
 def composite_risk_score(context: dg.AssetExecutionContext) -> dict:
