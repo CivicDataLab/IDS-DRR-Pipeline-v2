@@ -10,6 +10,7 @@ import logging
 
 import dagster as dg
 import importlib
+from dateutil.relativedelta import relativedelta
 
 # from flood_risk_pipeline.assets.extraction import satellite, weather, procurement
 # from flood_risk_pipeline.assets.transformation import hazard_factor, vulnerability_factor, risk_score
@@ -60,15 +61,40 @@ all_assets = [*extraction_assets, *transformation_assets, *output_assets]
 
 
 
+# States for IMD monthly schedule
+_IMD_STATES = [
+    "himachal_pradesh",
+    "assam",
+    "odisha",
+    "bihar",
+    "uttar_pradesh",
+]
+
+
+@dg.schedule(
+    name="imd_monthly_rain_schedule",
+    cron_schedule="0 2 2 * *",  # 2nd of every month, 2 AM
+    target=dg.AssetSelection.keys("imd_monthly_rain_data"),
+)
+def imd_monthly_rain_schedule(context: dg.ScheduleEvaluationContext):
+    """Extract last month's IMD rain data for all 5 states."""
+    last_month = context.scheduled_execution_time - relativedelta(months=1)
+    month_key = last_month.strftime("%Y-%m-01")
+
+    return [
+        dg.RunRequest(
+            run_key=f"imd_rain_{state}_{month_key}",
+            partition_key=dg.MultiPartitionKey({"state": state, "month": month_key}),
+        )
+        for state in _IMD_STATES
+    ]
+
+
 # Schedules
 daily_collection_schedule = dg.ScheduleDefinition(
     name="daily_collection",
     cron_schedule="0 2 * * *",  # Run at 2 AM daily
-    target=dg.AssetSelection.keys(
-        "gcn250_rainfall_data",
-        "imd_weather_data",
-        "river_gauge_data",
-    ),
+    target=dg.AssetSelection.keys("gcn250_rainfall_data"),
     description="Daily collection of weather and satellite data",
 )
 
@@ -158,18 +184,37 @@ def bhuvan_new_dates_sensor(context: dg.SensorEvaluationContext):
     return run_requests
 
 
-# Jobs
+#Jobs
 assam_extraction_job = dg.define_asset_job(
     name="assam_extraction_job",
     selection=dg.AssetSelection.keys(
         "bhuvan_flood_maps",
-        "raw_satellite_data",
         "raw_weather_data",
-        "raw_procurement_data",
-        "raw_budget_data",
-    ),
+    ), 
     partitions_def=monthly_state_partitions,
     description="Extract flood risk data for Assam state",
+)
+
+
+Odisha_extraction_job = dg.define_asset_job(
+    name="odisha_extraction_job",
+    selection=dg.AssetSelection.keys(
+        "bhuvan_flood_maps",
+        "raw_weather_data",
+    ), 
+    partitions_def=monthly_state_partitions,
+    description="Extract flood risk data for Odisha state",
+)
+
+
+hp_extraction_job = dg.define_asset_job(
+    name="hp_extraction_job",
+    selection=dg.AssetSelection.keys(
+        "bhuvan_flood_maps",
+        "raw_weather_data",
+    ), 
+    partitions_def=monthly_state_partitions,
+    description="Extract flood risk data for Himachal Pradesh state",
 )
 
 
@@ -189,11 +234,12 @@ defs = dg.Definitions(
         daily_collection_schedule,
         monthly_extraction_schedule,
         monthly_aggregation_schedule,
+        imd_monthly_rain_schedule,
     ],
     sensors=[
         bhuvan_new_dates_sensor,
     ],
     jobs=[
-        assam_extraction_job,
+        assam_extraction_job, Odisha_extraction_job, hp_extraction_job
     ],
 )

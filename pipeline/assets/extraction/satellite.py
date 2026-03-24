@@ -59,9 +59,6 @@ def gcn250_rainfall_data(context: dg.AssetExecutionContext) -> dict:
 
 
 
-# ---------------------------------------------------------------------------
-# Bhuvan flood maps — full tile-based pipeline
-
 
 @dg.asset(
     partitions_def=monthly_state_partitions,

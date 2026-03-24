@@ -3,5 +3,5 @@
 
 load_from:
   - python_module:
-      module_name: flood_risk_pipeline.definitions
+      module_name: pipeline.definitions
       working_directory: .
