@@ -13,13 +13,13 @@ import os
 import dagster as dg
 import yaml
 
-from flood_risk_pipeline.partitions import (
+from pipeline.partitions import (
     STATE_SOURCES,
     daily_partitions,
     monthly_state_partitions,
 )
-from flood_risk_pipeline.sources.bhuvan import BhuvanStateConfig
-from flood_risk_pipeline.sources import standalone_bhuvan
+from pipeline.sources.bhuvan import BhuvanStateConfig
+from pipeline.sources import standalone_bhuvan
 
 
 def _load_state_config(state: str) -> dict:

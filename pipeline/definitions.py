@@ -11,25 +11,27 @@ import logging
 import dagster as dg
 import importlib
 from dateutil.relativedelta import relativedelta
+import pipeline
 
-# from flood_risk_pipeline.assets.extraction import satellite, weather, procurement
-# from flood_risk_pipeline.assets.transformation import hazard_factor, vulnerability_factor, risk_score
-# from flood_risk_pipeline.assets.outputs import risk_model
-# from flood_risk_pipeline.assets import extraction, transformation, outputs
 
-satellite = importlib.import_module('flood_risk_pipeline.assets.extraction.satellite')
-weather = importlib.import_module('flood_risk_pipeline.assets.extraction.weather')
-procurement = importlib.import_module('flood_risk_pipeline.assets.extraction.procurement')
+# from pipeline.assets.extraction import satellite, weather, procurement
+# from pipeline.assets.transformation import hazard_factor, vulnerability_factor, risk_score
+# from pipeline.assets.outputs import risk_model
+# from pipeline.assets import extraction, transformation, outputs
 
-hazard_factor = importlib.import_module('flood_risk_pipeline.assets.transformation.hazard_factor')
-vulnerability_factor = importlib.import_module('flood_risk_pipeline.assets.transformation.vulnerability_factor')
-risk_score = importlib.import_module('flood_risk_pipeline.assets.transformation.risk_score')
+satellite = importlib.import_module('pipeline.assets.extraction.satellite')
+weather = importlib.import_module('pipeline.assets.extraction.weather')
+procurement = importlib.import_module('pipeline.assets.extraction.procurement')
 
-risk_model = importlib.import_module('flood_risk_pipeline.assets.outputs.risk_model')
+hazard_factor = importlib.import_module('pipeline.assets.transformation.hazard_factor')
+vulnerability_factor = importlib.import_module('pipeline.assets.transformation.vulnerability_factor')
+risk_score = importlib.import_module('pipeline.assets.transformation.risk_score')
 
-from flood_risk_pipeline.sources.apis import api_resources
-from flood_risk_pipeline.sources.storage import storage_resources
-from flood_risk_pipeline.partitions import (
+risk_model = importlib.import_module('pipeline.assets.outputs.risk_model')
+
+from pipeline.sources.apis import api_resources
+# from pipeline.sources.storage import storage_resources
+from pipeline.partitions import (
     state_partitions,
     monthly_state_partitions,
     daily_partitions,
@@ -143,7 +145,7 @@ def bhuvan_new_dates_sensor(context: dg.SensorEvaluationContext):
     previously-seen date strings.  When new dates appear, it emits
     ``RunRequest`` objects targeting the corresponding state-month partitions.
     """
-    from flood_risk_pipeline.sources.bhuvan import discover_flood_dates
+    from pipeline.sources.bhuvan import discover_flood_dates
 
     cursor: dict[str, list[str]] = json.loads(context.cursor or "{}")
     new_cursor = dict(cursor)
@@ -221,7 +223,6 @@ hp_extraction_job = dg.define_asset_job(
 # Resources
 all_resources = {
     **api_resources,
-    **storage_resources,
 }
 
 

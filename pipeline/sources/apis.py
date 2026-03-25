@@ -34,7 +34,7 @@ class GEEResource(ConfigurableResource):
 class BhuvanWMSResource(ConfigurableResource):
     """ISRO Bhuvan WMS API resource for flood map extraction.
 
-    Wraps the helper functions in :mod:`flood_risk_pipeline.sources.bhuvan`
+    Wraps the helper functions in :mod:`pipeline.sources.bhuvan`
     so they can be used as a Dagster resource with configurable parameters.
     """
 
@@ -48,7 +48,7 @@ class BhuvanWMSResource(ConfigurableResource):
 
     def discover_dates(self, state_code: str) -> list:
         """Discover available flood dates for a state."""
-        from flood_risk_pipeline.sources.bhuvan import discover_flood_dates
+        from pipeline.sources.bhuvan import discover_flood_dates
 
         return discover_flood_dates(
             state_code,
@@ -69,7 +69,7 @@ class BhuvanWMSResource(ConfigurableResource):
         """
         from pathlib import Path
 
-        from flood_risk_pipeline.sources.bhuvan import (
+        from pipeline.sources.bhuvan import (
             build_wms_layer_name,
             create_geotiff,
             download_all_tiles,
@@ -106,7 +106,7 @@ class BhuvanWMSResource(ConfigurableResource):
         """
         from pathlib import Path
 
-        from flood_risk_pipeline.sources.bhuvan import (
+        from pipeline.sources.bhuvan import (
             aggregate_monthly_rasters,
             save_monthly_raster,
         )
@@ -118,7 +118,7 @@ class BhuvanWMSResource(ConfigurableResource):
 
     def compute_stats(self, raster_data, raster_meta: dict, admin_boundaries_path: str):
         """Compute zonal statistics for a monthly raster."""
-        from flood_risk_pipeline.sources.bhuvan import compute_zonal_statistics
+        from pipeline.sources.bhuvan import compute_zonal_statistics
 
         return compute_zonal_statistics(
             raster_data, raster_meta, admin_boundaries_path
@@ -149,6 +149,33 @@ class TenderPortalResource(ConfigurableResource):
         return []
 
 
+class StagingResource(ConfigurableResource):
+    """Staging area for intermediate data."""
+
+    base_path: str = "./staging"
+
+    def get_daily_path(self, date: str) -> "Path":
+        """Get staging path for daily data."""
+        from pathlib import Path
+        path = Path(self.base_path) / "daily" / date
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_weekly_path(self, week: str) -> "Path":
+        """Get staging path for weekly data."""
+        from pathlib import Path
+        path = Path(self.base_path) / "weekly" / week
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_monthly_path(self, state: str, month: str) -> "Path":
+        """Get staging path for monthly state data."""
+        from pathlib import Path
+        path = Path(self.base_path) / "monthly" / state / month
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+
 # Export configured resources
 api_resources = {
     "gee": GEEResource(
@@ -157,4 +184,5 @@ api_resources = {
     "bhuvan_wms": BhuvanWMSResource(),
     "imd": IMDResource(),
     "tender_portal": TenderPortalResource(),
+    "staging": StagingResource(),
 }

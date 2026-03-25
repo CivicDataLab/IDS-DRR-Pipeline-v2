@@ -7,8 +7,8 @@ import dagster as dg
 import geopandas as gpd
 import yaml
 
-from flood_risk_pipeline.partitions import monthly_state_partitions
-from flood_risk_pipeline.sources import imd as imd_src
+from pipeline.partitions import monthly_state_partitions
+from pipeline.sources import imd as imd_src
 
 
 def _load_state_config(state: str) -> dict:

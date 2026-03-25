@@ -6,7 +6,7 @@ from dagster import materialize
 
 def test_definitions_load():
     """Test that definitions can be loaded without errors."""
-    from flood_risk_pipeline.definitions import defs
+    from pipeline.definitions import defs
 
     assert defs is not None
     assert len(defs.get_all_asset_keys()) > 0
@@ -14,7 +14,7 @@ def test_definitions_load():
 
 def test_partitions_defined():
     """Test that partitions are defined correctly."""
-    from flood_risk_pipeline.partitions import (
+    from pipeline.partitions import (
         state_partitions,
         monthly_state_partitions,
         daily_partitions,
@@ -29,7 +29,7 @@ def test_partitions_defined():
 
 def test_state_sources_configured():
     """Test that state sources are configured."""
-    from flood_risk_pipeline.partitions import STATE_SOURCES, get_state_sources
+    from pipeline.partitions import STATE_SOURCES, get_state_sources
 
     assert len(STATE_SOURCES) == 5
 
@@ -40,7 +40,7 @@ def test_state_sources_configured():
 
 def test_schedules_defined():
     """Test that schedules are defined."""
-    from flood_risk_pipeline.definitions import (
+    from pipeline.definitions import (
         daily_collection_schedule,
         weekly_collection_schedule,
         monthly_aggregation_schedule,

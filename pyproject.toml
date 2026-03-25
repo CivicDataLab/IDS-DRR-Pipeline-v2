@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flood-risk-pipeline"
+name = "pipeline"
 version = "0.1.0"
-description = "Multi-state flood risk data pipeline using Dagster"
+description = "Multi-state ids-drr data pipeline using Dagster"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -54,15 +54,15 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/CivicDataLab/flood-risk-pipeline"
-Repository = "https://github.com/CivicDataLab/flood-risk-pipeline"
+Homepage = "https://github.com/CivicDataLab/IDS-DRR-Pipeline-v2"
+Repository = "https://github.com/CivicDataLab/IDS-DRR-Pipeline-v2"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["flood_risk_pipeline*"]
+include = ["pipeline*"]
 
 [tool.dagster]
-module_name = "flood_risk_pipeline.definitions"
+module_name = "pipeline.definitions"
 
 [tool.black]
 line-length = 100

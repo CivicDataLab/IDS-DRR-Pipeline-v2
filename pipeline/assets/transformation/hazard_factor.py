@@ -10,7 +10,7 @@ Computes flood hazard indicators from satellite and weather data:
 
 import dagster as dg
 
-from flood_risk_pipeline.partitions import monthly_state_partitions
+from pipeline.partitions import monthly_state_partitions
 
 
 @dg.asset(

@@ -6,7 +6,7 @@ from pathlib import Path
 import dagster as dg
 import yaml
 
-from flood_risk_pipeline.sources import process_geojson, WorldPopDataFetcher
+from pipeline.sources import process_geojson, WorldPopDataFetcher
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 WORLDPOP_DIR = str(BASE_DIR / "sources" / "data" / "worldpop")
 CONFIG_DIR = BASE_DIR / "config" / "states"
 
-from flood_risk_pipeline.partitions import (
+from pipeline.partitions import (
     STATE_SOURCES,
     daily_partitions,
     monthly_state_partitions,

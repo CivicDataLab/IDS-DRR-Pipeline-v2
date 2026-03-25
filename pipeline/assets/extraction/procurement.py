@@ -13,7 +13,7 @@ import dagster as dg
 import yaml
 from pathlib import Path
 
-from flood_risk_pipeline.partitions import monthly_state_partitions
+from pipeline.partitions import monthly_state_partitions
 
 
 def load_state_config(state: str) -> dict:
