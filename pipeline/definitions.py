@@ -3,39 +3,46 @@ Dagster entry point for the IDS-DRR Flood Risk Pipeline.
 
 This module defines the Dagster Definitions object that registers all assets,
 resources, schedules, and sensors for the multi-state flood risk pipeline.
+
+Orchestration model:
+
+- ``monthly_state_etl_schedule`` fires on the 1st of each month and requests
+  last month's partition of every extraction asset, once per enabled state.
+- Everything downstream (master_variables -> factors -> outputs) carries
+  ``AutomationCondition.eager()`` and re-derives whenever an upstream
+  materialises — necessary because manual drop-in sources land at
+  unpredictable times.
+- ``bhuvan_new_dates_sensor`` polls the Bhuvan portal for new flood dates.
+- ``manual_inbox_sensor`` watches ``inbox/{state}/{source}/`` drop folders.
 """
 
+import importlib
 import json
 import logging
 
 import dagster as dg
-import importlib
 from dateutil.relativedelta import relativedelta
-import pipeline
 
-
-# from pipeline.assets.extraction import satellite, weather, procurement
-# from pipeline.assets.transformation import hazard_factor, vulnerability_factor, risk_score
-# from pipeline.assets.outputs import risk_model
-# from pipeline.assets import extraction, transformation, outputs
-
-satellite = importlib.import_module('pipeline.assets.extraction.satellite')
-weather = importlib.import_module('pipeline.assets.extraction.weather')
-procurement = importlib.import_module('pipeline.assets.extraction.procurement')
-
-hazard_factor = importlib.import_module('pipeline.assets.transformation.hazard_factor')
-vulnerability_factor = importlib.import_module('pipeline.assets.transformation.vulnerability_factor')
-risk_score = importlib.import_module('pipeline.assets.transformation.risk_score')
-
-risk_model = importlib.import_module('pipeline.assets.outputs.risk_model')
-
+from pipeline.sources import manual_inbox
 from pipeline.sources.apis import api_resources
-# from pipeline.sources.storage import storage_resources
-from pipeline.partitions import (
-    state_partitions,
-    monthly_state_partitions,
-    daily_partitions,
+from pipeline.state_config import enabled_states
+
+satellite = importlib.import_module("pipeline.assets.extraction.satellite")
+weather = importlib.import_module("pipeline.assets.extraction.weather")
+procurement = importlib.import_module("pipeline.assets.extraction.procurement")
+hydrology = importlib.import_module("pipeline.assets.extraction.hydrology")
+demographic = importlib.import_module("pipeline.assets.extraction.demographic")
+
+master_variables = importlib.import_module(
+    "pipeline.assets.transformation.master_variables"
 )
+hazard_factor = importlib.import_module("pipeline.assets.transformation.hazard_factor")
+vulnerability_factor = importlib.import_module(
+    "pipeline.assets.transformation.vulnerability_factor"
+)
+risk_score = importlib.import_module("pipeline.assets.transformation.risk_score")
+
+risk_model = importlib.import_module("pipeline.assets.outputs.risk_model")
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +50,12 @@ logger = logging.getLogger(__name__)
 # Collect all assets
 
 extraction_assets = dg.load_assets_from_modules(
-    [satellite, weather, procurement],
+    [satellite, weather, procurement, hydrology, demographic],
     group_name="extraction",
 )
 
 transformation_assets = dg.load_assets_from_modules(
-    [hazard_factor, vulnerability_factor, risk_score],
+    [master_variables, hazard_factor, vulnerability_factor, risk_score],
     group_name="transformation",
 )
 
@@ -58,66 +65,57 @@ output_assets = dg.load_assets_from_modules(
 )
 
 
-
 all_assets = [*extraction_assets, *transformation_assets, *output_assets]
 
 
+# ---------------------------------------------------------------------------
+# Schedules
+# ---------------------------------------------------------------------------
 
-# States for IMD monthly schedule
-_IMD_STATES = [
-    "himachal_pradesh",
-    "assam",
-    "odisha",
-    "bihar",
-    "uttar_pradesh",
+# Monthly extraction assets kicked off together on the 1st. Downstream
+# transformation/output assets are NOT scheduled: they follow automatically
+# via their eager automation conditions once extraction lands.
+_ETL_ASSET_KEYS = [
+    "imd_monthly_rain_data",
+    "ffs_river_levels",
+    "bhuvan_flood_maps",
+    "raw_satellite_data",
+    "sentinel_indices",
+    "nrsc_runoff",
+    "worldpop_annual_data",
+    "raw_procurement_data",
 ]
 
 
 @dg.schedule(
-    name="imd_monthly_rain_schedule",
-    cron_schedule="0 2 2 * *",  # 2nd of every month, 2 AM
-    target=dg.AssetSelection.keys("imd_monthly_rain_data"),
+    name="monthly_state_etl_schedule",
+    cron_schedule="0 2 1 * *",  # 1st of every month, 2 AM
+    target=dg.AssetSelection.assets(*_ETL_ASSET_KEYS),
 )
-def imd_monthly_rain_schedule(context: dg.ScheduleEvaluationContext):
-    """Extract last month's IMD rain data for all 5 states."""
+def monthly_state_etl_schedule(context: dg.ScheduleEvaluationContext):
+    """Request last month's extraction partition for every enabled state."""
     last_month = context.scheduled_execution_time - relativedelta(months=1)
     month_key = last_month.strftime("%Y-%m-01")
 
     return [
         dg.RunRequest(
-            run_key=f"imd_rain_{state}_{month_key}",
+            run_key=f"etl_{state}_{month_key}",
             partition_key=dg.MultiPartitionKey({"state": state, "month": month_key}),
         )
-        for state in _IMD_STATES
+        for state in enabled_states()
     ]
 
 
-# Schedules
-daily_collection_schedule = dg.ScheduleDefinition(
-    name="daily_collection",
-    cron_schedule="0 2 * * *",  # Run at 2 AM daily
-    target=dg.AssetSelection.keys("gcn250_rainfall_data"),
-    description="Daily collection of weather and satellite data",
-)
+# ---------------------------------------------------------------------------
+# Sensors
+# ---------------------------------------------------------------------------
 
-monthly_extraction_schedule = dg.ScheduleDefinition(
-    name="monthly_extraction",
-    cron_schedule="0 2 1 * *",  # Run at 2 AM on 1st of each month
-    target=dg.AssetSelection.keys(
-        "bhuvan_flood_maps",
-        "raw_satellite_data",
-        "raw_weather_data",
-        "raw_procurement_data",
-        "raw_budget_data",
-    ),
-    description="Monthly extraction of satellite, weather, and procurement data",
-)
-
-monthly_aggregation_schedule = dg.ScheduleDefinition(
-    name="monthly_aggregation",
-    cron_schedule="0 2 1 * *",  # Run at 2 AM on 1st of each month
-    target=dg.AssetSelection.groups("transformation") | dg.AssetSelection.keys("risk_score_output"),
-    description="Monthly aggregation and risk model execution",
+# Evaluates the eager() automation conditions on downstream assets.
+automation_sensor = dg.AutomationConditionSensorDefinition(
+    name="automation_condition_sensor",
+    target=dg.AssetSelection.all(),
+    default_status=dg.DefaultSensorStatus.RUNNING,
+    minimum_interval_seconds=300,
 )
 
 
@@ -133,11 +131,10 @@ _BHUVAN_STATES: dict[str, str] = {
 
 @dg.sensor(
     name="bhuvan_new_dates_sensor",
-    target=dg.AssetSelection.keys("bhuvan_flood_maps"),
+    target=dg.AssetSelection.assets("bhuvan_flood_maps"),
     minimum_interval_seconds=864000,  # Check every 10 days (10 * 24 * 3600)
     description="Polls Bhuvan portal for new flood observation dates",
 )
-
 def bhuvan_new_dates_sensor(context: dg.SensorEvaluationContext):
     """Detect new flood dates and trigger materialisation of bhuvan_flood_maps.
 
@@ -186,37 +183,82 @@ def bhuvan_new_dates_sensor(context: dg.SensorEvaluationContext):
     return run_requests
 
 
-#Jobs
-assam_extraction_job = dg.define_asset_job(
-    name="assam_extraction_job",
-    selection=dg.AssetSelection.keys(
-        "bhuvan_flood_maps",
-        "raw_weather_data",
-    ), 
-    partitions_def=monthly_state_partitions,
-    description="Extract flood risk data for Assam state",
+# Drop-in sources: inbox source folder -> asset that promotes its files.
+_INBOX_ASSET_BY_SOURCE = {
+    "tenders": "raw_procurement_data",
+    "nrsc": "nrsc_runoff",
+    "worldpop": "worldpop_annual_data",
+}
+
+
+@dg.sensor(
+    name="manual_inbox_sensor",
+    target=dg.AssetSelection.assets(*sorted(set(_INBOX_ASSET_BY_SOURCE.values()))),
+    minimum_interval_seconds=3600,  # hourly
+    description="Watches inbox/{state}/{source}/ for manually dropped CSVs",
 )
+def manual_inbox_sensor(context: dg.SensorEvaluationContext):
+    """Request the matching asset partition for each new inbox file.
+
+    The cursor is a JSON snapshot of pending file names and mtimes per
+    state/source; a run is requested only when the snapshot changes.
+    """
+    cursor: dict = json.loads(context.cursor or "{}")
+    new_cursor: dict = {}
+    run_requests: list[dg.RunRequest] = []
+
+    for state in enabled_states():
+        pending = manual_inbox.scan_all_inboxes(state)
+        if not pending:
+            continue
+        new_cursor[state] = json.loads(manual_inbox.inbox_cursor(pending))
+
+        for source, files in pending.items():
+            asset_name = _INBOX_ASSET_BY_SOURCE.get(source)
+            if asset_name is None:
+                continue
+
+            seen = cursor.get(state, {}).get(source, {})
+            months: set[str] = set()
+            for path in files:
+                if str(path.stat().st_mtime) == str(seen.get(path.name)):
+                    continue  # unchanged since last evaluation
+                try:
+                    _, timeperiod = manual_inbox.parse_inbox_filename(source, path.name)
+                except ValueError as exc:
+                    logger.warning("Ignoring inbox file %s: %s", path, exc)
+                    continue
+                year, month = timeperiod.split("_")[0], timeperiod.split("_")[-1]
+                if len(timeperiod) == 4:  # annual file -> refresh via January run
+                    months.add(f"{year}-01-01")
+                else:
+                    months.add(f"{year}-{month}-01")
+
+            for month_key in sorted(months):
+                run_requests.append(
+                    dg.RunRequest(
+                        run_key=f"inbox_{state}_{source}_{month_key}_{context.cursor or ''}",
+                        partition_key=dg.MultiPartitionKey(
+                            {"state": state, "month": month_key}
+                        ),
+                        asset_selection=[dg.AssetKey(asset_name)],
+                    )
+                )
+
+    context.update_cursor(json.dumps(new_cursor, sort_keys=True))
+    return run_requests
 
 
-Odisha_extraction_job = dg.define_asset_job(
-    name="odisha_extraction_job",
-    selection=dg.AssetSelection.keys(
-        "bhuvan_flood_maps",
-        "raw_weather_data",
-    ), 
-    partitions_def=monthly_state_partitions,
-    description="Extract flood risk data for Odisha state",
-)
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
 
-
-hp_extraction_job = dg.define_asset_job(
-    name="hp_extraction_job",
-    selection=dg.AssetSelection.keys(
-        "bhuvan_flood_maps",
-        "raw_weather_data",
-    ), 
-    partitions_def=monthly_state_partitions,
-    description="Extract flood risk data for Himachal Pradesh state",
+# Ad-hoc backfill job: materialise all extraction assets for chosen
+# state-month partitions from the Dagster UI or CLI.
+state_etl_job = dg.define_asset_job(
+    name="state_etl_job",
+    selection=dg.AssetSelection.assets(*_ETL_ASSET_KEYS),
+    description="Extract all sources for one state-month partition",
 )
 
 
@@ -232,15 +274,14 @@ defs = dg.Definitions(
     assets=all_assets,
     resources=all_resources,
     schedules=[
-        daily_collection_schedule,
-        monthly_extraction_schedule,
-        monthly_aggregation_schedule,
-        imd_monthly_rain_schedule,
+        monthly_state_etl_schedule,
     ],
     sensors=[
+        automation_sensor,
         bhuvan_new_dates_sensor,
+        manual_inbox_sensor,
     ],
     jobs=[
-        assam_extraction_job, Odisha_extraction_job, hp_extraction_job
+        state_etl_job,
     ],
 )

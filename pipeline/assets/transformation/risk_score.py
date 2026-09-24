@@ -1,74 +1,103 @@
 """
-Risk Score calculation.
+Government response factor and the composite risk score.
 
-Combines all risk factors into a final risk score:
-- Hazard Factor
-- Vulnerability Factor
-- Exposure Factor
-- Government Response Factor
+The composite score runs TOPSIS over the four factor scores (hazard,
+exposure, vulnerability, government response) for each month.
 """
 
 import dagster as dg
+import pandas as pd
 
 from pipeline.partitions import monthly_state_partitions
+from pipeline.sources import staging_layout
+from pipeline.sources.risk_model import factors
+from pipeline.state_config import load_state_config
+
+# Factor CSV stem -> the column that CSV contributes to the composite score.
+FACTOR_SOURCES = {
+    "flood-hazard": ["flood-hazard"],
+    "exposure": ["exposure"],
+    "vulnerability": ["vulnerability", "efficiency", "landd_score"],
+    "government-response": ["government-response"],
+}
 
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    deps=["raw_procurement_data"],
-    description="Government response factor from procurement and budget data",
+    deps=["master_variables"],
+    automation_condition=dg.AutomationCondition.eager(),
+    description="Government response factor from tender and relief spending",
 )
-def government_response_factor(context: dg.AssetExecutionContext) -> dict:
-    """Calculate government response factor from procurement data."""
+def government_response_factor(context: dg.AssetExecutionContext) -> dg.MaterializeResult:
+    """Calculate the government response factor for a state."""
     keys = context.partition_key.keys_by_dimension
     state, month = keys["state"], keys["month"]
 
-    context.log.info(f"Computing government response factor for {state} - {month}")
+    cfg = load_state_config(state)
+    master = pd.read_csv(staging_layout.master_csv_path(state))
+    context.log.info(f"Computing government response factor for {state} ({len(master)} rows)")
 
-    # TODO: Implement actual government response calculation
-    # This would analyze:
-    # - Disaster-related tender activity
-    # - Budget allocations for DRR
-    # - Response capacity indicators
+    response = factors.compute_government_response(master, cfg)
+    scored = master.merge(response, on=["object_id", "timeperiod"], how="left")
 
-    response_score = 0.0  # Placeholder
+    path = staging_layout.factor_csv_path(state, "government-response")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    scored.to_csv(path, index=False)
 
-    return {
-        "state": state,
-        "month": month,
-        "response_score": response_score,
-        "components": {
-            "tender_activity": 0.0,
-            "budget_allocation": 0.0,
-            "response_capacity": 0.0,
-        },
-        "status": "computed",
-    }
+    return dg.MaterializeResult(
+        metadata={
+            "state": state,
+            "month": month,
+            "path": str(path),
+            "rows": len(scored),
+            "distribution": str(
+                response["government-response"].value_counts().sort_index().to_dict()
+            ),
+        }
+    )
 
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    deps=["hazard_factor", "vulnerability_factor", "exposure_factor", "government_response_factor"],
-    description="Final composite risk score combining all factors",
+    deps=[
+        "hazard_factor",
+        "vulnerability_factor",
+        "exposure_factor",
+        "government_response_factor",
+    ],
+    automation_condition=dg.AutomationCondition.eager(),
+    description="Composite TOPSIS risk score across all four factors",
 )
-def composite_risk_score(context: dg.AssetExecutionContext) -> dict:
-    """Calculate final composite risk score."""
+def composite_risk_score(context: dg.AssetExecutionContext) -> dg.MaterializeResult:
+    """Combine the four factor scores into the tehsil-level risk score."""
     keys = context.partition_key.keys_by_dimension
     state, month = keys["state"], keys["month"]
 
-    context.log.info(f"Computing composite risk score for {state} - {month}")
+    cfg = load_state_config(state)
+    master = pd.read_csv(staging_layout.master_csv_path(state))
 
-    # TODO: Implement actual risk score calculation
-    # Risk Score = f(Hazard, Vulnerability, Exposure, Government Response)
-    # Typical formula: Risk = Hazard * Vulnerability * Exposure * (1 - Response)
+    factor_dfs = {}
+    for factor, columns in FACTOR_SOURCES.items():
+        path = staging_layout.factor_csv_path(state, factor)
+        if not path.exists():
+            raise FileNotFoundError(f"missing factor scores for {state}: {path}")
+        df = pd.read_csv(path)
+        present = [c for c in columns if c in df.columns]
+        factor_dfs[factor] = df[["object_id", "timeperiod", *present]]
 
-    risk_score = 0.0  # Placeholder
+    context.log.info(f"Running TOPSIS for {state} over {len(factor_dfs)} factors")
+    tehsil = factors.compute_risk_scores(master, factor_dfs, cfg)
 
-    return {
-        "state": state,
-        "month": month,
-        "risk_score": risk_score,
-        "risk_level": "low",  # low, medium, high, very_high
-        "confidence": 0.0,
-        "status": "computed",
-    }
+    path = staging_layout.outputs_dir(state) / "risk_score.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tehsil.to_csv(path, index=False)
+
+    return dg.MaterializeResult(
+        metadata={
+            "state": state,
+            "month": month,
+            "path": str(path),
+            "rows": len(tehsil),
+            "distribution": str(tehsil["risk-score"].value_counts().sort_index().to_dict()),
+        }
+    )

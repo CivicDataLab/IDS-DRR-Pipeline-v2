@@ -3,6 +3,7 @@
 
 state_id: uttar_pradesh
 state_code: UP
+enabled: false
 
 admin_boundaries:
   source: bharatmaps

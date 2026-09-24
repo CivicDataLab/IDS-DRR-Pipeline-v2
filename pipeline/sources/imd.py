@@ -10,17 +10,19 @@ import rasterstats
 from rasterio.crs import CRS
 from rasterio.transform import Affine, from_bounds
 from rasterio.warp import reproject, Resampling
-import rioxarray
+import rioxarray  # noqa: F401  (registers the .rio accessor)
+
+from pipeline.sources import staging_layout
 
 
-path = os.getcwd()
-
-CURRENT_FOLDER = os.path.dirname(os.path.abspath(__file__))
-print(CURRENT_FOLDER)
-DATA_FOLDER = os.path.join(CURRENT_FOLDER, "data", "imd")
-print(DATA_FOLDER)
+# IMD publishes national grids, so the downloads are shared across states.
+DATA_FOLDER = str(staging_layout.shared_dir("imd"))
 TIFF_DATA_FOLDER = os.path.join(DATA_FOLDER, "rain", "tiff")
 CSV_DATA_FOLDER = os.path.join(DATA_FOLDER, "rain", "csv")
+
+# Rainfall statistics derived per admin boundary, in the order
+# rasterstats returns them.
+RAIN_VARIABLES = {"mean": "mean_rain", "sum": "sum_rain", "max": "max_rain"}
 
 os.makedirs(TIFF_DATA_FOLDER, exist_ok=True)
 os.makedirs(CSV_DATA_FOLDER, exist_ok=True)
@@ -187,24 +189,27 @@ def parse_and_format_data(year: int, start_date: str, end_date: str):
     return None
 
 
-def retrieve_subdistrict_data(year: int, ADMIN_BDRY_GDF: str):
+def retrieve_subdistrict_data(
+    year: int,
+    ADMIN_BDRY_GDF: gpd.GeoDataFrame,
+    months: list[str] | None = None,
+    state: str | None = None,
+    join_field: str = "object_id",
+):
+    """Compute per-subdistrict rainfall statistics from the monthly rasters.
+
+    Writes the full zonal-statistics CSV to the shared IMD staging folder,
+    and — when ``state`` is given — one CSV per rainfall variable into the
+    staging variables contract.
+
+    Returns the list of ``(timeperiod, staged_paths)`` processed.
     """
-    Retrives subdistrict data from the year wise .tif file
-    """
-    for month in [
-        "01",
-        "02",
-        "03",
-        "04",
-        "05",
-        "06",
-        "07",
-        "08",
-        "09",
-        "10",
-        "11",
-        "12",
-    ]:
+    if months is None:
+        months = [f"{m:02d}" for m in range(1, 13)]
+
+    processed: list[tuple[str, list[str]]] = []
+
+    for month in months:
         month_and_year_filename = "{}_{}".format(str(year), str(month))
         try:
             raster = rasterio.open(
@@ -242,22 +247,54 @@ def retrieve_subdistrict_data(year: int, ADMIN_BDRY_GDF: str):
             CSV_DATA_FOLDER + "/{}.csv".format(month_and_year_filename), index=False
         )
 
-    return None
+        staged: list[str] = []
+        if state:
+            if join_field not in zonal_stats_df.columns:
+                raise ValueError(
+                    f"IMD zonal stats for {state} have no '{join_field}' column "
+                    f"(boundary properties: {list(zonal_stats_df.columns)})"
+                )
+            renamed = zonal_stats_df.rename(
+                columns={join_field: "object_id", **RAIN_VARIABLES}
+            )
+            for variable in RAIN_VARIABLES.values():
+                path = staging_layout.write_variable_csv(
+                    renamed,
+                    state,
+                    "imd",
+                    variable,
+                    month_and_year_filename,
+                    value_columns=[variable],
+                )
+                staged.append(str(path))
+
+        processed.append((month_and_year_filename, staged))
+
+    return processed
 
 
 
 
 
 if __name__ == "__main__":
+    # Usage: python -m pipeline.sources.imd <year> [state]
+    year = int(sys.argv[1])
+    state = sys.argv[2] if len(sys.argv) > 2 else None
 
-    # Takes year as an input from the cli
-    year = str(sys.argv[1])
-    year = int(year)
-
-    # IF the year is current year, specify start and end date
-    start_date = "2025-01-01"
-    end_date = "2025-06-30"
+    start_date = f"{year}-01-01"
+    end_date = f"{year}-12-31"
 
     download_data(year, start_date=start_date, end_date=end_date)
     parse_and_format_data(year, start_date=start_date, end_date=end_date)
-    retrieve_subdistrict_data(year)
+
+    if state:
+        from pipeline.state_config import boundaries_path, load_state_config
+
+        cfg = load_state_config(state)
+        join_field = cfg.get("boundaries", {}).get("join_field", "object_id")
+        retrieve_subdistrict_data(
+            year,
+            gpd.read_file(boundaries_path(state)),
+            state=state,
+            join_field=join_field,
+        )

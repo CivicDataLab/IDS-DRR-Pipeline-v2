@@ -175,6 +175,50 @@ class StagingResource(ConfigurableResource):
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    # ------------------------------------------------------------------
+    # Contract paths (see pipeline.sources.staging_layout for the layout)
+    # ------------------------------------------------------------------
+
+    def get_variables_path(self, state: str, source: str, variable: str) -> "Path":
+        """Directory of per-variable monthly CSVs for one source variable."""
+        from pipeline.sources import staging_layout
+
+        path = staging_layout.variables_dir(state, source, variable)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_master_path(self, state: str) -> "Path":
+        """Path of the state's MASTER_VARIABLES.csv."""
+        from pipeline.sources import staging_layout
+
+        path = staging_layout.master_csv_path(state)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_factors_path(self, state: str) -> "Path":
+        """Directory of the state's factor score CSVs."""
+        from pipeline.sources import staging_layout
+
+        path = staging_layout.factors_dir(state)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_outputs_path(self, state: str) -> "Path":
+        """Directory of the state's final risk score CSVs."""
+        from pipeline.sources import staging_layout
+
+        path = staging_layout.outputs_dir(state)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_inbox_path(self, state: str, source: str) -> "Path":
+        """Drop folder for a manual source."""
+        from pipeline.sources import staging_layout
+
+        path = staging_layout.inbox_dir(state, source)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
 
 # Export configured resources
 api_resources = {

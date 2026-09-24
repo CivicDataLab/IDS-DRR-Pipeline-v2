@@ -97,3 +97,10 @@ Thumbs.db
 *.key
 *credentials*.json
 *service-account*.json
+
+# Pipeline data areas (populated by scripts/seed_data.py and pipeline runs)
+staging/
+inbox/
+data/reference/
+bhuvan_data/
+pipeline/sources/data/
