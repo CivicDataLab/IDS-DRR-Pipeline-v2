@@ -79,10 +79,11 @@ artifacts/
 history/
 storage/
 
-# Data directories
-data/
-staging/
-
+# Data directories (repo root only — bare patterns also match
+# nested source dirs such as pipeline/assets/outputs/)
+/data/
+/staging/
+/outputs/
 
 # Jupyter
 
@@ -99,8 +100,8 @@ Thumbs.db
 *service-account*.json
 
 # Pipeline data areas (populated by scripts/seed_data.py and pipeline runs)
-staging/
-inbox/
-data/reference/
+/staging/
+/inbox/
+/data/reference/
 bhuvan_data/
 pipeline/sources/data/
