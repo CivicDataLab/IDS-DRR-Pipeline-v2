@@ -192,7 +192,7 @@ assam_extraction_job = dg.define_asset_job(
     selection=dg.AssetSelection.keys(
         "bhuvan_flood_maps",
         "raw_weather_data",
-    ), 
+    ).upstream(),
     partitions_def=monthly_state_partitions,
     description="Extract flood risk data for Assam state",
 )
@@ -203,7 +203,7 @@ Odisha_extraction_job = dg.define_asset_job(
     selection=dg.AssetSelection.keys(
         "bhuvan_flood_maps",
         "raw_weather_data",
-    ), 
+    ).upstream(),
     partitions_def=monthly_state_partitions,
     description="Extract flood risk data for Odisha state",
 )
@@ -214,7 +214,7 @@ hp_extraction_job = dg.define_asset_job(
     selection=dg.AssetSelection.keys(
         "bhuvan_flood_maps",
         "raw_weather_data",
-    ), 
+    ).upstream(),
     partitions_def=monthly_state_partitions,
     description="Extract flood risk data for Himachal Pradesh state",
 )

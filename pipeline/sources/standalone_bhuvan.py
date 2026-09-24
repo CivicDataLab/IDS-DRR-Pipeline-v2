@@ -59,10 +59,14 @@ except ImportError:
 
 
 
-# buvan_config.json file path
+# bhuvan_config.json lives at the repository root so that every entry point
+# (CLI, Dagster assets, sensors) reads the same file regardless of cwd.
 
 
-CONFIG_FILE = "bhuvan_config.json"
+CONFIG_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "bhuvan_config.json",
+)
 
 # Default state configurations with bounding boxes and codes
 # Format: state_code is used in Bhuvan URL, dropdown_value is for Selenium
@@ -92,6 +96,18 @@ DEFAULT_STATE_CONFIG = {
         "delta": 0.0439453125
     },
 
+    "Himachal Pradesh": {
+        "code": "hp",
+        "dropdown_value": "id102_0",
+        "dropdown_id": "minus102",
+        "bbox": {
+            "lat_south": 30.3,
+            "lat_north": 33.5,
+            "lon_west": 75.9,
+            "lon_east": 79.0
+        },
+        "delta": 0.0439453125
+    },
     "Uttar Pradesh": {
         "code": "up",
         "dropdown_value": "id103_0",
@@ -134,12 +150,14 @@ def save_config(config):
 
 def get_state_config(state_name, config):
     states = config.get("states", {})
-    
-    # Case-insensitive lookup
+
+    # Case-insensitive lookup, tolerant of underscore-style state ids
+    # (e.g. "himachal_pradesh" matches "Himachal Pradesh").
+    wanted = state_name.lower().replace("_", " ")
     for name, cfg in states.items():
-        if name.lower() == state_name.lower():
+        if name.lower().replace("_", " ") == wanted:
             return name, cfg
-    
+
     return None, None
 
 
