@@ -23,7 +23,6 @@ import logging
 import dagster as dg
 from dateutil.relativedelta import relativedelta
 
-from pipeline.partitions import monthly_state_partitions
 from pipeline.sources import manual_inbox
 from pipeline.sources.apis import api_resources
 from pipeline.state_config import enabled_states
@@ -31,7 +30,12 @@ from pipeline.state_config import enabled_states
 satellite = importlib.import_module("pipeline.assets.extraction.satellite")
 weather = importlib.import_module("pipeline.assets.extraction.weather")
 procurement = importlib.import_module("pipeline.assets.extraction.procurement")
+hydrology = importlib.import_module("pipeline.assets.extraction.hydrology")
+demographic = importlib.import_module("pipeline.assets.extraction.demographic")
 
+master_variables = importlib.import_module(
+    "pipeline.assets.transformation.master_variables"
+)
 hazard_factor = importlib.import_module("pipeline.assets.transformation.hazard_factor")
 vulnerability_factor = importlib.import_module(
     "pipeline.assets.transformation.vulnerability_factor"
@@ -46,12 +50,12 @@ logger = logging.getLogger(__name__)
 # Collect all assets
 
 extraction_assets = dg.load_assets_from_modules(
-    [satellite, weather, procurement],
+    [satellite, weather, procurement, hydrology, demographic],
     group_name="extraction",
 )
 
 transformation_assets = dg.load_assets_from_modules(
-    [hazard_factor, vulnerability_factor, risk_score],
+    [master_variables, hazard_factor, vulnerability_factor, risk_score],
     group_name="transformation",
 )
 
@@ -73,8 +77,12 @@ all_assets = [*extraction_assets, *transformation_assets, *output_assets]
 # via their eager automation conditions once extraction lands.
 _ETL_ASSET_KEYS = [
     "imd_monthly_rain_data",
+    "ffs_river_levels",
     "bhuvan_flood_maps",
     "raw_satellite_data",
+    "sentinel_indices",
+    "nrsc_runoff",
+    "worldpop_annual_data",
     "raw_procurement_data",
 ]
 
@@ -82,7 +90,7 @@ _ETL_ASSET_KEYS = [
 @dg.schedule(
     name="monthly_state_etl_schedule",
     cron_schedule="0 2 1 * *",  # 1st of every month, 2 AM
-    target=dg.AssetSelection.keys(*_ETL_ASSET_KEYS),
+    target=dg.AssetSelection.assets(*_ETL_ASSET_KEYS),
 )
 def monthly_state_etl_schedule(context: dg.ScheduleEvaluationContext):
     """Request last month's extraction partition for every enabled state."""
@@ -123,7 +131,7 @@ _BHUVAN_STATES: dict[str, str] = {
 
 @dg.sensor(
     name="bhuvan_new_dates_sensor",
-    target=dg.AssetSelection.keys("bhuvan_flood_maps"),
+    target=dg.AssetSelection.assets("bhuvan_flood_maps"),
     minimum_interval_seconds=864000,  # Check every 10 days (10 * 24 * 3600)
     description="Polls Bhuvan portal for new flood observation dates",
 )
@@ -178,12 +186,14 @@ def bhuvan_new_dates_sensor(context: dg.SensorEvaluationContext):
 # Drop-in sources: inbox source folder -> asset that promotes its files.
 _INBOX_ASSET_BY_SOURCE = {
     "tenders": "raw_procurement_data",
+    "nrsc": "nrsc_runoff",
+    "worldpop": "worldpop_annual_data",
 }
 
 
 @dg.sensor(
     name="manual_inbox_sensor",
-    target=dg.AssetSelection.keys(*sorted(set(_INBOX_ASSET_BY_SOURCE.values()))),
+    target=dg.AssetSelection.assets(*sorted(set(_INBOX_ASSET_BY_SOURCE.values()))),
     minimum_interval_seconds=3600,  # hourly
     description="Watches inbox/{state}/{source}/ for manually dropped CSVs",
 )
@@ -247,7 +257,7 @@ def manual_inbox_sensor(context: dg.SensorEvaluationContext):
 # state-month partitions from the Dagster UI or CLI.
 state_etl_job = dg.define_asset_job(
     name="state_etl_job",
-    selection=dg.AssetSelection.keys(*_ETL_ASSET_KEYS),
+    selection=dg.AssetSelection.assets(*_ETL_ASSET_KEYS),
     description="Extract all sources for one state-month partition",
 )
 

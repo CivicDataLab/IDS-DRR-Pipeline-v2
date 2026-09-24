@@ -11,7 +11,6 @@ This module defines the partition schemes used across all assets:
 
 import dagster as dg
 
-
 # Define 5 Indian states as static partitions
 state_partitions = dg.StaticPartitionsDefinition([
     "himachal_pradesh",

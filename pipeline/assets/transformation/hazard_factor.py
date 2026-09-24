@@ -1,49 +1,47 @@
 """
 Hazard Factor calculation.
 
-Computes flood hazard indicators from satellite and weather data:
-- Flood probability based on historical patterns
-- Flood intensity metrics
-- Rainfall accumulation
-- River gauge alerts
+AHP-weighted combination of rainfall, runoff, elevation and distance from
+river, binned into hazard levels 1-5 per month.
 """
 
 import dagster as dg
+import pandas as pd
 
 from pipeline.partitions import monthly_state_partitions
+from pipeline.sources import staging_layout
+from pipeline.sources.risk_model import factors
+from pipeline.state_config import load_state_config
 
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    deps=["raw_satellite_data", "raw_weather_data"],
-    automation_condition=dg.AutomationCondition.on_cron("0 2 1 * *"),
-    description="Computed hazard factor combining satellite and weather data",
+    deps=["master_variables"],
+    automation_condition=dg.AutomationCondition.eager(),
+    description="Flood hazard factor (AHP-weighted, binned 1-5)",
 )
-def hazard_factor(context: dg.AssetExecutionContext) -> dict:
-    """Calculate hazard factor for a state-month combination."""
+def hazard_factor(context: dg.AssetExecutionContext) -> dg.MaterializeResult:
+    """Calculate the hazard factor for every tehsil-month of a state."""
     keys = context.partition_key.keys_by_dimension
     state, month = keys["state"], keys["month"]
 
-    context.log.info(f"Computing hazard factor for {state} - {month}")
+    cfg = load_state_config(state)
+    master = pd.read_csv(staging_layout.master_csv_path(state))
+    context.log.info(f"Computing hazard factor for {state} ({len(master)} rows)")
 
-    # TODO: Implement actual hazard calculation
-    # This would combine:
-    # - Satellite-derived flood extent
-    # - Rainfall accumulation from IMD
-    # - River gauge readings
-    # - Historical flood patterns
+    hazard = factors.compute_hazard(master, cfg)
+    scored = master.merge(hazard, on=["object_id", "timeperiod"], how="left")
 
-    hazard_score = 0.0  # Placeholder - would be computed from actual data
+    path = staging_layout.factor_csv_path(state, "flood-hazard")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    scored.to_csv(path, index=False)
 
-    return {
-        "state": state,
-        "month": month,
-        "hazard_score": hazard_score,
-        "components": {
-            "flood_probability": 0.0,
-            "flood_intensity": 0.0,
-            "rainfall_index": 0.0,
-            "river_alert_level": 0,
-        },
-        "status": "computed",
-    }
+    return dg.MaterializeResult(
+        metadata={
+            "state": state,
+            "month": month,
+            "path": str(path),
+            "rows": len(scored),
+            "distribution": str(hazard["flood-hazard"].value_counts().sort_index().to_dict()),
+        }
+    )

@@ -2,62 +2,32 @@
 Satellite data extraction assets.
 
 Handles extraction from:
-- GCN250: Google Earth Engine rainfall-runoff data
 - Bhuvan: ISRO flood maps via tile-based WMS download (no GDAL CLI)
+- Sentinel-2: NDVI / NDBI indices via Google Earth Engine
 """
 
+import os
 from datetime import datetime
 from pathlib import Path
-import os
 
 import dagster as dg
-import yaml
 
 from pipeline.partitions import (
     STATE_SOURCES,
-    daily_partitions,
     monthly_state_partitions,
 )
+from pipeline.sources import staging_layout, standalone_bhuvan
 from pipeline.sources.bhuvan import BhuvanStateConfig
-from pipeline.sources import standalone_bhuvan
+from pipeline.state_config import load_state_config as _load_state_config
 
-
-def _load_state_config(state: str) -> dict:
-    """Load state-specific YAML configuration."""
-    config_path = (
-        Path(__file__).resolve().parent.parent.parent
-        / "config"
-        / "states"
-        / f"{state}.yaml"
-    )
-    if config_path.exists():
-        with open(config_path) as f:
-            return yaml.safe_load(f)
-    return {}
-
-
-# ---------------------------------------------------------------------------
-# GCN250 (placeholder — unchanged)
-# ---------------------------------------------------------------------------
-
-
-@dg.asset(
-    partitions_def=daily_partitions,
-    description="Raw GCN250 rainfall-runoff data from Google Earth Engine",
-)
-def gcn250_rainfall_data(context: dg.AssetExecutionContext) -> dict:
-    """Extract GCN250 rainfall-runoff data for a given date."""
-    partition_date = context.partition_key
-    context.log.info(f"Extracting GCN250 data for {partition_date}")
-    # TODO: Implement actual GEE extraction
-    return {
-        "date": partition_date,
-        "source": "gcn250",
-        "status": "extracted",
-        "records": 0,
-    }
-
-
+# Inundation statistics staged for the master panel; the remaining pixel
+# counts stay in the raw zonal-stats CSV.
+INUNDATION_VARIABLES = [
+    "inundation_pct",
+    "inundation_intensity_mean",
+    "inundation_intensity_mean_nonzero",
+    "inundation_intensity_sum",
+]
 
 
 @dg.asset(
@@ -85,6 +55,7 @@ def bhuvan_flood_maps(context: dg.AssetExecutionContext) -> dict:
     bhuvan_enabled = (
         config.get("data_sources", {}).get("satellite", {}).get("bhuvan", False)
     )
+
     if not bhuvan_enabled:
         context.log.info(f"Bhuvan not enabled for {state}, skipping")
         return {"state": state, "month": month_str, "status": "skipped"}
@@ -187,7 +158,7 @@ def bhuvan_flood_maps(context: dg.AssetExecutionContext) -> dict:
 
 @dg.asset(
     partitions_def=monthly_state_partitions,
-    deps=["gcn250_rainfall_data", "bhuvan_flood_maps"],
+    deps=["bhuvan_flood_maps"],
     description=(
         "Aggregated satellite data: monthly inundation raster and "
         "zonal statistics per admin boundary."
@@ -215,7 +186,7 @@ def raw_satellite_data(context: dg.AssetExecutionContext) -> dict:
             "bhuvan_available": False,
             "status": "no_bhuvan",
         }
-        
+
     config = _load_state_config(state)
     bhuvan_cfg_dict = (
         config.get("data_sources", {}).get("satellite", {}).get("bhuvan_config")
@@ -291,6 +262,10 @@ def raw_satellite_data(context: dg.AssetExecutionContext) -> dict:
                     f"(aggregated {len(daily_tiffs)} daily maps)"
                 )
 
+                staged = _stage_inundation(
+                    context, state, csv_path, f"{target_year}_{target_month:02d}"
+                )
+
                 return {
                     "state": state,
                     "month": month_str,
@@ -298,6 +273,7 @@ def raw_satellite_data(context: dg.AssetExecutionContext) -> dict:
                     "daily_maps_count": len(daily_tiffs),
                     "monthly_raster": monthly_raster_path,
                     "zonal_stats_csv": csv_path,
+                    "variables": staged,
                     "status": "aggregated",
                 }
             else:
@@ -330,3 +306,59 @@ def raw_satellite_data(context: dg.AssetExecutionContext) -> dict:
             "daily_maps_count": len(daily_tiffs),
             "status": "aggregated_no_zonal",
         }
+
+
+def _stage_inundation(
+    context: dg.AssetExecutionContext, state: str, csv_path: str, timeperiod: str
+) -> list[str]:
+    """Write Bhuvan zonal statistics into the staging variables contract."""
+    import pandas as pd
+
+    df = pd.read_csv(csv_path)
+    present = [c for c in INUNDATION_VARIABLES if c in df.columns]
+    if not present:
+        context.log.warning(f"No inundation columns in {csv_path}")
+        return []
+
+    path = staging_layout.write_variable_csv(
+        df, state, "bhuvan", "inundation_pct", timeperiod, value_columns=present
+    )
+    context.log.info(f"Staged {len(present)} inundation variables to {path}")
+    return [str(path)]
+
+
+@dg.asset(
+    partitions_def=monthly_state_partitions,
+    description="Sentinel-2 NDVI/NDBI indices per admin boundary",
+)
+def sentinel_indices(context: dg.AssetExecutionContext) -> dict:
+    """Compute monthly Sentinel-2 indices for a state via Earth Engine."""
+    keys = context.partition_key.keys_by_dimension
+    state, month_str = keys["state"], keys["month"]
+
+    config = _load_state_config(state)
+    sentinel_cfg = (
+        config.get("data_sources", {}).get("satellite", {}).get("sentinel", {})
+    )
+    if not sentinel_cfg.get("enabled"):
+        context.log.info(f"Sentinel not enabled for {state}, skipping")
+        return {"state": state, "month": month_str, "status": "skipped"}
+
+    from pipeline.sources import sentinel as sentinel_src
+
+    target_date = datetime.strptime(month_str, "%Y-%m-%d")
+    try:
+        result = sentinel_src.compute_monthly_indices(
+            state, config, target_date.year, target_date.month
+        )
+    except Exception as exc:
+        context.log.error(f"Sentinel extraction failed for {state} {month_str}: {exc}")
+        return {"state": state, "month": month_str, "status": "failed", "error": str(exc)}
+
+    if result["status"] == "no_credentials":
+        context.log.warning(
+            "Earth Engine credentials unavailable; skipping Sentinel indices"
+        )
+
+    context.log.info(f"Sentinel {state} {month_str}: {result['status']}")
+    return {"state": state, "month": month_str, **result}

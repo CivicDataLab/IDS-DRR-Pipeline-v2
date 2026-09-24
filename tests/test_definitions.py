@@ -24,9 +24,7 @@ def test_monthly_partitions_cover_panel_history():
     """The month dimension starts at the 2021-04 panel start for backfills."""
     from pipeline.partitions import monthly_state_partitions
 
-    month_dim = next(
-        d for d in monthly_state_partitions.partitions_defs if d.name == "month"
-    )
+    month_dim = next(d for d in monthly_state_partitions.partitions_defs if d.name == "month")
     month_keys = month_dim.partitions_def.get_partition_keys()
     assert month_keys[0] == "2021-04-01"
 

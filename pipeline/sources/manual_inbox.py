@@ -90,11 +90,7 @@ def scan_inbox(state: str, source: str) -> list[Path]:
 
 def scan_all_inboxes(state: str) -> dict[str, list[Path]]:
     """All pending files for a state, keyed by source."""
-    return {
-        source: files
-        for source in INBOX_SCHEMAS
-        if (files := scan_inbox(state, source))
-    }
+    return {source: files for source in INBOX_SCHEMAS if (files := scan_inbox(state, source))}
 
 
 def _join_rate(ids: pd.Series, boundary_ids: set[str], district_level: bool) -> float:
@@ -159,7 +155,6 @@ def promote(
 def inbox_cursor(state_files: dict[str, list[Path]]) -> str:
     """Stable JSON cursor of pending files (name + mtime) for sensors."""
     snapshot = {
-        source: {p.name: p.stat().st_mtime for p in files}
-        for source, files in state_files.items()
+        source: {p.name: p.stat().st_mtime for p in files} for source, files in state_files.items()
     }
     return json.dumps(snapshot, sort_keys=True)

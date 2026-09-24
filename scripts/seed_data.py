@@ -142,9 +142,7 @@ def _read_panel(master_dir: Path, stem: str) -> pd.DataFrame:
     return df
 
 
-def _split_panel(
-    df: pd.DataFrame, source: str, variable: str, value_columns: list[str]
-) -> int:
+def _split_panel(df: pd.DataFrame, source: str, variable: str, value_columns: list[str]) -> int:
     """Split one all-months panel into per-timeperiod contract CSVs."""
     df = df.dropna(subset=["object_id", "timeperiod"])
     df = df[df["timeperiod"].astype(str).str.len() > 0]
@@ -165,7 +163,9 @@ def seed_reference(eco: Path, model: Path) -> None:
     ref = staging_layout.reference_dir(STATE)
 
     copy(eco / "Maps" / "hp_tehsil_final.geojson", ref / "boundaries" / "hp_tehsil_final.geojson")
-    copy(eco / "Maps" / "hp_district_final.geojson", ref / "boundaries" / "hp_district_final.geojson")
+    copy(
+        eco / "Maps" / "hp_district_final.geojson", ref / "boundaries" / "hp_district_final.geojson"
+    )
     copy(eco / "Maps" / "HP_VILLAGES.csv", ref / "gazetteer" / "HP_VILLAGES.csv")
     copy(
         model / "RiskScoreModel" / "assets" / "district_objectid.csv",
