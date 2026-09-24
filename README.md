@@ -32,12 +32,32 @@ The pipeline uses Dagster's asset-based architecture with:
 # Install dependencies
 pip install .
 
+# Seed reference data + historical variables (required before first run)
+python scripts/seed_data.py
+
 # Start Dagster UI
-dagster dev -f flood_risk_pipeline/definitions.py
+dagster dev -m pipeline.definitions
 
 # Or use Docker Compose
 docker-compose -f docker-compose.dev.yaml up
 ```
+
+### Data areas (not committed)
+
+Nothing under `data/reference/`, `staging/`, or `inbox/` lives in git.
+`scripts/seed_data.py` materialises all of it from the public
+flood-data-ecosystem and risk-score-model repositories (pinned revisions):
+
+- `data/reference/<state>/` — admin boundaries, gazetteers, one-time
+  variables (elevation, drainage density, Antyodaya, …) and the golden
+  fixtures used by the parity tests.
+- `staging/variables/<state>/<source>/<var>/<var>_YYYY_MM.csv` — the
+  per-variable monthly contract every extraction asset writes to;
+  the seed script backfills 2021-04 → present history.
+- `inbox/<state>/<source>/` — drop folders for manual sources (NRSC
+  runoff, HPSDMA losses, tender exports). Files named
+  `<variable>_YYYY_MM.csv` are validated, promoted into staging, and
+  moved to `processed/` by the inbox sensor.
 
 ### Running Tests
 

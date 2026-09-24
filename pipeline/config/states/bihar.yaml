@@ -3,6 +3,7 @@
 
 state_id: bihar
 state_code: BR
+enabled: false
 
 admin_boundaries:
   source: bharatmaps

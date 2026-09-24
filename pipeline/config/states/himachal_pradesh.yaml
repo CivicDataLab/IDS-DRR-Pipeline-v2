@@ -3,35 +3,193 @@
 
 state_id: himachal_pradesh
 state_code: HP
+enabled: true
+
+# Canonical admin boundaries (tehsil level). All zonal statistics and the
+# master panel join on `join_field`. Populated by scripts/seed_data.py.
+boundaries:
+  geojson: data/reference/himachal_pradesh/boundaries/hp_tehsil_final.geojson
+  join_field: object_id
+  level: tehsil
 
 admin_boundaries:
   source: bharatmaps
-  level: revenue_circle
+  level: tehsil
 
 data_sources:
+  weather:
+    imd:
+      enabled: true
+    ffs:
+      enabled: true
+      start_year: 2021
+
   satellite:
-    gcn250: true
+    gcn250: false # one-time reference data, not a monthly source
     bhuvan: true
     bhuvan_config:
       # Bounding box: [min_lon, min_lat, max_lon, max_lat]
       bbox: [75.5886, 30.3824, 79.0462, 33.2590]
       wms_code: "hp"
       layer_prefix: "flood"
-      admin_boundary_shapefile: "data/shapefiles/hp_revenue_circles.shp"
+      admin_boundary_shapefile: "data/reference/himachal_pradesh/boundaries/hp_tehsil_final.geojson"
+    sentinel:
+      enabled: true
+      gee_credentials_env: GEE_SERVICE_ACCOUNT_JSON
+      gee_project: flood-risk-pipeline
+    nrsc_runoff:
+      enabled: true
+      mode: manual # drop runoff_{YYYY_MM}.csv into inbox/himachal_pradesh/nrsc/
 
   procurement:
+    tenders:
+      enabled: true
+      mode: manual # drop tender CSVs into inbox/himachal_pradesh/tenders/
+      portal_url: https://hptenders.gov.in
+      scraper_class: HPTenderScraper
     portal_url: https://hptenders.gov.in
     scraper_class: HPTenderScraper
 
   demographics:
     census_year: 2011
-    worldpop: true
+    worldpop:
+      enabled: true
+      cadence: annual
+      refresh_month: 1 # yearly refresh checked on the January run
+
+# How staging/variables CSVs assemble into MASTER_VARIABLES.csv
+# (port of flood-data-ecosystem master.py + master2.py).
+master:
+  start_month: "2021-04"
+  monthly_variables:
+    - { source: tenders, variable: total_tender_awarded_value }
+    - { source: tenders, variable: Repair and Restoration_tenders_awarded_value }
+    - { source: tenders, variable: LWSS_tenders_awarded_value }
+    - { source: tenders, variable: NDRF_tenders_awarded_value }
+    - { source: tenders, variable: SDMF_tenders_awarded_value }
+    - { source: tenders, variable: WSS_tenders_awarded_value }
+    - { source: tenders, variable: Preparedness Measures_tenders_awarded_value }
+    - { source: tenders, variable: Immediate Measures_tenders_awarded_value }
+    - { source: tenders, variable: Others_tenders_awarded_value }
+    - { source: imd, variable: mean_rain }
+    - { source: imd, variable: sum_rain }
+    - { source: imd, variable: max_rain }
+    - { source: nrsc, variable: runoff }
+    - { source: bhuvan, variable: inundation_pct }
+    - { source: hpsdma, variable: structure_lost }
+    - { source: hpsdma, variable: health_centres_lost }
+    - { source: hpsdma, variable: health_amount }
+    - { source: hpsdma, variable: internalwatersupply }
+    - { source: hpsdma, variable: electricwires }
+    - { source: hpsdma, variable: Electricpoles }
+    - { source: hpsdma, variable: Roadlength }
+    - { source: hpsdma, variable: streetlights }
+    - { source: hpsdma, variable: person_dead }
+    - { source: hpsdma, variable: person_major_injury }
+    - { source: hpsdma, variable: schools_damaged }
+    - { source: hpsdma, variable: economic_loss }
+    - { source: hpsdma, variable: total_livestock_loss }
+    - {
+        source: hpsdma,
+        variable: relief_and_mitigation_sanction_value,
+        level: district,
+      }
+  annual_variables:
+    - { source: worldpop, variable: mean_sex_ratio }
+    - { source: worldpop, variable: sum_aged_population }
+    - { source: worldpop, variable: sum_young_population }
+    - { source: worldpop, variable: sum_population }
+  # One-time variables live in data/reference/<state>/variables/
+  onetime_variables:
+    - Schools
+    - RailLengths
+    - RoadLengths
+    - slope_elevation
+    - antyodaya_variables
+    - drainage_density
+    - distance_from_river
+    - rural_vul
+  imputation:
+    object_mean:
+      [
+        max_rain,
+        mean_rain,
+        sum_rain,
+        Sum_Runoff,
+        Peak_Runoff,
+        Mean_Daily_Runoff,
+      ]
+    district_mean:
+      [
+        block_nosanitation_hhds_pct,
+        block_piped_hhds_pct,
+        avg_electricity,
+        net_sown_area_in_hac,
+      ]
+    district_median: [avg_tele]
+    default: zero
+  drop_columns: [count_bhuvan_pixels, count_inundated_pixels]
+
+# Port of IDS-DRR-Himachal-Pradesh-Risk-Score-Model scripts.
+risk_model:
+  district_map: data/reference/himachal_pradesh/district_objectid.csv
+  hazard:
+    # AHP-derived weights (normalised in code)
+    weights:
+      elevation_mean: 0.22
+      distance-from-river-mean: 0.11
+      mean_rain: 0.08
+      Mean_Daily_Runoff: 0.03
+    invert: [elevation_mean, distance-from-river-mean]
+  exposure:
+    vars: [total_hhd, sum_population]
+    raw_var: sum_population
+  vulnerability:
+    input_vars:
+      [
+        mean_sex_ratio,
+        CVIAll_comp,
+        avg_electricity,
+        block_nosanitation_hhds_pct,
+        sum_aged_population,
+        schools_count,
+      ]
+    damage_vars:
+      [
+        total_livestock_loss,
+        schools_damaged,
+        person_dead,
+        person_major_injury,
+        structure_lost,
+        health_centres_lost,
+        Roadlength,
+      ]
+    neg_inputs: [block_nosanitation_hhds_pct, sum_aged_population, CVIAll_comp]
+    invert_inputs: [avg_electricity]
+    per_capita:
+      total_livestock_loss: sum_population
+      schools_damaged: schools_count
+      person_dead: sum_population
+      person_major_injury: sum_population
+      structure_lost: sum_population
+      health_centres_lost: sum_population
+      Roadlength: road_length
+      block_piped_hhds_pct: sum_population
+      block_nosanitation_hhds_pct: sum_population
+      sum_aged_population: sum_population
+  government_response:
+    vars: [total_tender_awarded_value, relief_and_mitigation_sanction_value]
+  topsis_weights:
+    flood-hazard: 4
+    exposure: 1
+    vulnerability: 2
+    government-response: 2
 
 update_frequencies:
-  weather: daily
+  weather: monthly
   procurement: monthly
-  demographics: static
+  demographics: annual
 
 output:
   risk_score_table: hp_flood_risk_scores
-  partition_key: revenue_circle_id
+  partition_key: object_id
