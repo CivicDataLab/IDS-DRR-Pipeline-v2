@@ -82,7 +82,7 @@ storage/
 # Data directories
 data/
 staging/
-outputs/
+
 
 # Jupyter
 
